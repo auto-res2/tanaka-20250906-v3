@@ -1,0 +1,159 @@
+datasets:
+  c4: https://huggingface.co/datasets/allenai/c4
+  mmlu: https://huggingface.co/datasets/tasksource/mmlu
+  hellaswag: https://huggingface.co/datasets/Rowan/hellaswag
+
+models:
+  llm_1.3b:
+    arch: LLaMA-2-1.3B
+    params: 1.3e9
+    tensor_parallel: 8
+  opt_2.7b:
+    arch: OPT-2.7B
+    params: 2.7e9
+    tensor_parallel: 8
+
+common_hyperparams:
+  optimizer: AdamW
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+  adam_eps: 1e-8
+  weight_decay: 0.1
+  seq_length: 512
+  micro_batch: 4
+  global_batch_tokens: 16384
+  lr_peak: 6.0e-4
+  lr_warmup_fraction: 0.01
+  lr_schedule: cosine
+  clip_grad: 1.0
+
+experiments:
+  - name: exp1_end_to_end
+    description: |
+      End-to-End benchmark on LLaMA-2-1.3B: FP16 vs SLTrain vs Any-Precision-4bit vs PAX.
+      Runs full 150B tokens; logs validation ppl every 1M tokens.
+    launcher_cmd:
+      - deepspeed
+      - external/Megatron-LM/pretrain_gpt.py
+      - --tensor-model-parallel-size
+      - "8"
+      - --num-layers
+      - "24"
+      - --hidden-size
+      - "2048"
+      - --num-attention-heads
+      - "32"
+      - --seq-length
+      - "512"
+      - --max-position-embeddings
+      - "512"
+      - --micro-batch-size
+      - "4"
+      - --global-batch-size
+      - "16384"
+      - --lr
+      - "6.0e-4"
+      - --min-lr
+      - "6.0e-5"
+      - --lr-decay-style
+      - cosine
+      - --lr-warmup-fraction
+      - "0.01"
+      - --optimizer
+      - AdamW
+      - --adam-beta1
+      - "0.9"
+      - --adam-beta2
+      - "0.95"
+      - --weight-decay
+      - "0.1"
+      - --clip-grad
+      - "1.0"
+      - --data-path
+      - c4
+      - --valid-data-path
+      - c4_val
+      - --pax
+      - --pax-init-bits
+      - "3"
+      - --pax-init-rank
+      - "8"
+      - --pax-init-sparsity
+      - "0.03"
+      - --pax-scheduler-thresh
+      - "1.0"
+      - --pax-scheduler-interval
+      - "1000"
+      - --log-interval
+      - "100"
+      - --eval-iters
+      - "20"
+    figures:
+      - {type: val_curve, file: training_loss_exp1.pdf}
+
+  - name: exp2_ablation
+    description: |
+      Ablation of PAX expansion axes on 30B tokens.  Variants: Full-PAX, –Precision, –Rank, –Density, Fixed-Schedule.
+    launcher_cmd:
+      - deepspeed
+      - external/Megatron-LM/pretrain_gpt.py
+      - --tensor-model-parallel-size
+      - "8"
+      - --num-layers
+      - "24"
+      - --hidden-size
+      - "2048"
+      - --num-attention-heads
+      - "32"
+      - --seq-length
+      - "512"
+      - --max-position-embeddings
+      - "512"
+      - --micro-batch-size
+      - "4"
+      - --global-batch-size
+      - "16384"
+      - --train-tokens
+      - "30000000000"   # 30B
+      - --pax
+      - --pax-init-bits
+      - "3"
+      - --pax-init-rank
+      - "8"
+      - --pax-init-sparsity
+      - "0.03"
+      - --pax-disable-rank   # NOTE: this will be programmatically swapped per variant
+    figures:
+      - {type: val_curve, file: training_loss_exp2.pdf}
+
+  - name: exp3_hardware
+    description: |
+      Hardware-level efficiency & scaling on OPT-2.7B; phases early/mid/late profiled with Nsight.
+    launcher_cmd:
+      - deepspeed
+      - external/Megatron-LM/pretrain_gpt.py
+      - --tensor-model-parallel-size
+      - "8"
+      - --num-layers
+      - "32"
+      - --hidden-size
+      - "2560"
+      - --num-attention-heads
+      - "32"
+      - --seq-length
+      - "512"
+      - --micro-batch-size
+      - "4"
+      - --global-batch-size
+      - "16384"
+      - --pax
+      - --pax-init-bits
+      - "3"
+      - --pax-init-rank
+      - "8"
+      - --pax-init-sparsity
+      - "0.03"
+      - --pax-profile-phase
+      - early
+    figures:
+      - {type: val_curve, file: training_loss_exp3.pdf}
